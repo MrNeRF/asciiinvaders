@@ -12,6 +12,12 @@ struct player {
 	int ypos ;
 };
 
+struct bullet {
+	char grafic;
+	int xpos;
+	int ypos;
+};
+
 void quit() {
 	endwin();
 }
@@ -41,6 +47,25 @@ void initPlayer(struct player *p) {
 	p->ypos = LINES - 2;	
 }
 
+void initBullet(struct bullet **b, int xpos, int ypos) {
+	*b = (struct bullet*) malloc(sizeof(struct bullet));
+	(*b)->grafic = '|';
+	(*b)->xpos = xpos + 3;
+	(*b)->ypos = ypos - 1;
+}
+
+struct bullet *updatebullet(struct bullet *b) {
+	if (b == NULL) {
+		return NULL;
+	} else if (b->ypos >=0) {
+		b->ypos -= 1;
+		return b;
+	} else {
+		free(b);
+		return NULL;
+	}
+}
+
 void destroyPlayer(struct player *p) {
 	free(p->grafic[0]);
 	free(p->grafic[1]);
@@ -67,16 +92,21 @@ void printPlayer(struct player *p) {
 	for(int i = 0; i < 2; i++) {
 		for(int j = 0; j < p->hdim - 1; j++){
 			mvprintw(p->ypos + i, p->xpos + j, &(p->grafic[i][j]));
-			mvprintw(50, 40, "X");
 		}
 	}
+}
+
+void printBullet(struct bullet *b) {
+	if (b == NULL)
+		return;
+	mvprintw(b->ypos, b->xpos, &(b->grafic));
 }
 
 
 int main(int argc, char **argv) {
 	int x, y;
 	int running = 1;
-	double fps = 3.0;
+	double fps = 40.0;
 	initscr();
 	cbreak();
 	noecho();
@@ -91,6 +121,7 @@ int main(int argc, char **argv) {
 
 	struct player predator;
 	initPlayer(&predator);
+	struct bullet *shot = NULL;
 	clock_gettime(CLOCK_REALTIME, &timepast);
 	while (running){
 		clock_gettime(CLOCK_REALTIME, &now);
@@ -100,10 +131,14 @@ int main(int argc, char **argv) {
 			if(kbhit()) {
 				switch (getch()){ 
 					case 'j': 
-						predator.xpos -=2;
+						predator.xpos -=4;
 						break;
 					case 'k':
-						predator.xpos +=2;
+						predator.xpos +=4;
+						break;
+					case ' ':
+						if (shot == NULL)
+							initBullet(&shot, predator.xpos, predator.ypos);
 						break;
 					case 'q':
 						running = 0;
@@ -112,6 +147,10 @@ int main(int argc, char **argv) {
 			}
 			erase();
 			printPlayer(&predator);
+			if (shot != NULL) {
+				shot = updatebullet(shot);
+				printBullet(shot);
+			}
 			ms = 0.0;
 			refresh();
 		} 
