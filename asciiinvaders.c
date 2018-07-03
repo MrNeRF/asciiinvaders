@@ -3,19 +3,32 @@
 #include <curses.h>
 #include <time.h>
 #include <unistd.h>
+#include "linkedList.h"
 
 struct player {
-	int vdim ;
-	int hdim ;
+	int vdim;
+	int hdim;
 	char **grafic;
-	int xpos ;
-	int ypos ;
+	int xpos;
+	int ypos;
 };
 
 struct bullet {
 	char grafic;
 	int xpos;
 	int ypos;
+};
+
+struct invader {
+	char **grafic;
+	int vdim;
+	int hdim;
+	int xpos;
+	int ypos;
+	int direction;
+	int ystepsz;
+	int xstepsz;
+	struct list_head list;
 };
 
 void quit() {
@@ -45,6 +58,30 @@ void initPlayer(struct player *p) {
 	p->grafic = g;
 	p->xpos = 5;
 	p->ypos = LINES - 2;	
+}
+
+void initInvader(struct invader *inv) {
+	inv->vdim = 6; // dimension vertical
+	inv->hdim = 4; // dimension horizontal
+	char **g  = (char **) malloc(inv->vdim * sizeof(char *));
+	g[0] = (char *) malloc(inv->hdim * sizeof(char));
+	g[1] = (char *) malloc(inv->hdim * sizeof(char));
+	g[2] = (char *) malloc(inv->hdim * sizeof(char));
+	g[3] = (char *) malloc(inv->hdim * sizeof(char));
+	g[4] = (char *) malloc(inv->hdim * sizeof(char));
+	g[5] = (char *) malloc(inv->hdim * sizeof(char));
+	strncpy(g[0], "@M@\0",  inv->hdim);
+	strncpy(g[1], "===\0",  inv->hdim);
+	strncpy(g[2], "/ \\\0", inv->hdim);
+	strncpy(g[3],  "@M@\0", inv->hdim);
+	strncpy(g[4],  "===\0", inv->hdim);
+	strncpy(g[5], "\\ /\0", inv->hdim);
+	inv->grafic = g;
+	inv->xpos = 0;
+	inv->ypos = 0;	
+	inv->direction = 1;
+	inv->ystepsz = 4;
+	inv->xstepsz = 8;
 }
 
 void initBullet(struct bullet **b, int xpos, int ypos) {
@@ -102,6 +139,65 @@ void printBullet(struct bullet *b) {
 	mvprintw(b->ypos, b->xpos, &(b->grafic));
 }
 
+void initInvaderList(struct list_head *head) {
+	struct invader *myinvader= NULL;
+	for(int i=0; i < 2; i++) {
+		for(int j=0; j < 10; j++) {
+			myinvader = (struct invader *) malloc(sizeof(struct invader));
+			initInvader(myinvader);
+			myinvader->xpos = 8 + j * 6;
+			myinvader->ypos = 2 + i * 3;
+
+			if( i == 0 && j == 0)
+				INIT_LIST_HEAD(&myinvader->list);
+			list_add(&myinvader->list, head);
+		}
+	}
+}
+
+void printInvaders(struct list_head *head, int sprite, int step) {
+	int changeDirection = 0;
+	struct invader *ptr = NULL;
+	int maxxpos = 0;
+	int minxpos = COLS;
+
+	list_for_each_entry(ptr, head, list) {
+		if (step){
+			ptr->xpos += ptr->xstepsz * ptr->direction;
+		}
+		for(int i = 0; i < 3; i++) {
+			for(int j = 0; j < 4; j++){
+				mvprintw(ptr->ypos + i, ptr->xpos + j, &(ptr->grafic[i + 3 * sprite][j]));
+			}
+		}
+
+		if (ptr->xpos < minxpos)
+			minxpos = ptr->xpos;
+		if (ptr->xpos + ptr->hdim > maxxpos)
+			maxxpos = ptr->xpos;
+	}
+
+	if (maxxpos + 4 > COLS - 8 || minxpos < 8) {
+		changeDirection = 1;
+	}
+
+	if (changeDirection) {
+		erase();
+		ptr = NULL;
+		list_for_each_entry(ptr, head, list) {
+			ptr->direction *= -1;
+			ptr->ypos += ptr->ystepsz;
+			ptr->xpos += ptr->direction * ptr->xstepsz;
+
+			for(int i = 0; i < 3; i++) {
+				for(int j = 0; j < 4; j++){
+					mvprintw(ptr->ypos + i, ptr->xpos + j, &(ptr->grafic[i + 3 * sprite][j]));
+				}
+		}
+		}
+	}
+	
+}
 
 int main(int argc, char **argv) {
 	int x, y;
@@ -123,11 +219,20 @@ int main(int argc, char **argv) {
 	initPlayer(&predator);
 	struct bullet *shot = NULL;
 	clock_gettime(CLOCK_REALTIME, &timepast);
+
+	static LIST_HEAD(invaderList);
+	initInvaderList(&invaderList);
+
+	int sprite = 0;
+	int step = 0;
+	double spritecounter = 0.0;
 	while (running){
 		clock_gettime(CLOCK_REALTIME, &now);
 		ms += getTimePast(&timepast, &now);
 
-		if(ms > fps) { // 30 fps perr second
+		if(ms > fps) { 
+			spritecounter += ms;
+
 			if(kbhit()) {
 				switch (getch()){ 
 					case 'j': 
@@ -146,11 +251,18 @@ int main(int argc, char **argv) {
 				}			
 			}
 			erase();
+			if (spritecounter > 1000.0f) {
+				sprite = (sprite + 1) % 2;
+				step = 1;
+				spritecounter = 0.0;
+			}
+			printInvaders(&invaderList, sprite, step);
 			printPlayer(&predator);
 			if (shot != NULL) {
 				shot = updatebullet(shot);
 				printBullet(shot);
 			}
+			step = 0;
 			ms = 0.0;
 			refresh();
 		} 
