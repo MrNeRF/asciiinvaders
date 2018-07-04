@@ -28,6 +28,8 @@ struct invader {
 	int direction;
 	int ystepsz;
 	int xstepsz;
+	int hit;
+	int destroyed;
 	struct list_head list;
 };
 
@@ -61,7 +63,7 @@ void initPlayer(struct player *p) {
 }
 
 void initInvader(struct invader *inv) {
-	inv->vdim = 6; // dimension vertical
+	inv->vdim = 9; // dimension vertical
 	inv->hdim = 4; // dimension horizontal
 	char **g  = (char **) malloc(inv->vdim * sizeof(char *));
 	g[0] = (char *) malloc(inv->hdim * sizeof(char));
@@ -70,18 +72,26 @@ void initInvader(struct invader *inv) {
 	g[3] = (char *) malloc(inv->hdim * sizeof(char));
 	g[4] = (char *) malloc(inv->hdim * sizeof(char));
 	g[5] = (char *) malloc(inv->hdim * sizeof(char));
+	g[6] = (char *) malloc(inv->hdim * sizeof(char));
+	g[7] = (char *) malloc(inv->hdim * sizeof(char));
+	g[8] = (char *) malloc(inv->hdim * sizeof(char));
 	strncpy(g[0], "@M@\0",  inv->hdim);
 	strncpy(g[1], "===\0",  inv->hdim);
 	strncpy(g[2], "/ \\\0", inv->hdim);
 	strncpy(g[3],  "@M@\0", inv->hdim);
 	strncpy(g[4],  "===\0", inv->hdim);
 	strncpy(g[5], "\\ /\0", inv->hdim);
+	strncpy(g[6],  "\\|/\0", inv->hdim);
+	strncpy(g[7],  "-  -\0", inv->hdim);
+	strncpy(g[8], "/|\\\0", inv->hdim);
 	inv->grafic = g;
 	inv->xpos = 0;
 	inv->ypos = 0;	
 	inv->direction = 1;
 	inv->ystepsz = 4;
 	inv->xstepsz = 8;
+	inv->hit = 0;
+	inv->destroyed = 0;
 }
 
 void initBullet(struct bullet **b, int xpos, int ypos) {
@@ -91,15 +101,14 @@ void initBullet(struct bullet **b, int xpos, int ypos) {
 	(*b)->ypos = ypos - 1;
 }
 
-struct bullet *updatebullet(struct bullet *b) {
-	if (b == NULL) {
-		return NULL;
-	} else if (b->ypos >=0) {
-		b->ypos -= 1;
-		return b;
-	} else {
-		free(b);
-		return NULL;
+void updatebullet(struct bullet **b) {
+	if (b == NULL || (*b) == NULL) {
+		return;
+	} else if ((*b)->ypos >=0) {
+		(*b)->ypos -= 1;
+	} else if ((*b)->ypos < 0){
+		free(*b);
+		*b = NULL;
 	}
 }
 
@@ -164,10 +173,18 @@ void printInvaders(struct list_head *head, int sprite, int step) {
 	list_for_each_entry(ptr, head, list) {
 		if (step){
 			ptr->xpos += ptr->xstepsz * ptr->direction;
+			if (ptr->hit)
+				ptr->destroyed = 1;
 		}
 		for(int i = 0; i < 3; i++) {
+			if (ptr->destroyed)
+				continue;
 			for(int j = 0; j < 4; j++){
-				mvprintw(ptr->ypos + i, ptr->xpos + j, &(ptr->grafic[i + 3 * sprite][j]));
+				if(ptr->hit) {
+					mvprintw(ptr->ypos + i, ptr->xpos + j, &(ptr->grafic[i + 6][j]));
+				} else {
+					mvprintw(ptr->ypos + i, ptr->xpos + j, &(ptr->grafic[i + 3 * sprite][j]));
+				}
 			}
 		}
 
@@ -190,13 +207,34 @@ void printInvaders(struct list_head *head, int sprite, int step) {
 			ptr->xpos += ptr->direction * ptr->xstepsz;
 
 			for(int i = 0; i < 3; i++) {
+				if (ptr->destroyed)
+					continue;
 				for(int j = 0; j < 4; j++){
-					mvprintw(ptr->ypos + i, ptr->xpos + j, &(ptr->grafic[i + 3 * sprite][j]));
+					if(ptr->hit) {
+						mvprintw(ptr->ypos + i, ptr->xpos + j, &(ptr->grafic[i + 6][j]));
+					} else {
+						mvprintw(ptr->ypos + i, ptr->xpos + j, &(ptr->grafic[i + 3 * sprite][j]));
+					}
 				}
-		}
+			}
 		}
 	}
-	
+
+}
+
+void checkCollision(struct list_head *invaderHead, struct bullet **shot) {
+	if ( *shot == NULL)
+		return;
+	struct invader *ptr = NULL;
+	list_for_each_entry(ptr, invaderHead, list) {
+		if(!ptr->destroyed && (*shot)->xpos >= ptr->xpos && (*shot)->xpos <= ptr->xpos+3 && 
+				(*shot)->ypos >= ptr->ypos && (*shot)->ypos <= ptr->ypos + 3) {
+			ptr->hit = 1;
+			(*shot)->ypos = -1;
+			updatebullet(shot);
+			return;
+		}
+	}
 }
 
 int main(int argc, char **argv) {
@@ -256,12 +294,13 @@ int main(int argc, char **argv) {
 				step = 1;
 				spritecounter = 0.0;
 			}
+			if (shot != NULL) {
+				updatebullet(&shot);
+			}
+			checkCollision(&invaderList, &shot);
 			printInvaders(&invaderList, sprite, step);
 			printPlayer(&predator);
-			if (shot != NULL) {
-				shot = updatebullet(shot);
-				printBullet(shot);
-			}
+			printBullet(shot);
 			step = 0;
 			ms = 0.0;
 			refresh();
