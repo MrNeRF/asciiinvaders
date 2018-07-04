@@ -177,8 +177,10 @@ void printInvaders(struct list_head *head, int sprite, int step) {
 				ptr->destroyed = 1;
 		}
 		for(int i = 0; i < 3; i++) {
-			if (ptr->destroyed)
+			if (ptr->destroyed) {
+				ptr->hit = 0;
 				continue;
+			}
 			for(int j = 0; j < 4; j++){
 				if(ptr->hit) {
 					mvprintw(ptr->ypos + i, ptr->xpos + j, &(ptr->grafic[i + 6][j]));
@@ -199,7 +201,7 @@ void printInvaders(struct list_head *head, int sprite, int step) {
 	}
 
 	if (changeDirection) {
-		erase();
+		clear();
 		ptr = NULL;
 		list_for_each_entry(ptr, head, list) {
 			ptr->direction *= -1;
@@ -288,7 +290,7 @@ int main(int argc, char **argv) {
 						break;
 				}			
 			}
-			erase();
+			clear();
 			if (spritecounter > 1000.0f) {
 				sprite = (sprite + 1) % 2;
 				step = 1;
