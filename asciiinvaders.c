@@ -14,9 +14,19 @@ struct player {
 };
 
 struct bullet {
-	char grafic;
+	char *grafic;
+	int gsize;
 	int xpos;
 	int ypos;
+	struct list_head list;
+};
+
+struct obstacle {
+	char *grafic;
+	int gsize;
+	int xpos;
+	int ypos;
+	struct list_head list;
 };
 
 struct invader {
@@ -94,21 +104,39 @@ void initInvader(struct invader *inv) {
 	inv->destroyed = 0;
 }
 
+void initObstacle(struct obstacle **obs, int xpos, int ypos) {
+	*obs = (struct obstacle*) malloc(sizeof(struct obstacle));
+	(*obs)->gsize = 2;
+	
+	(*obs)->grafic = (char *) malloc(sizeof(char) * (*obs)->gsize);
+	strncpy((*obs)->grafic, "#\0", (*obs)->gsize);
+	(*obs)->xpos = xpos; 
+	(*obs)->ypos = ypos;
+}
+
 void initBullet(struct bullet **b, int xpos, int ypos) {
 	*b = (struct bullet*) malloc(sizeof(struct bullet));
-	(*b)->grafic = '|';
+	(*b)->gsize = 2;
+	
+	(*b)->grafic = (char *) malloc(sizeof(char) * (*b)->gsize);
+	strncpy((*b)->grafic, "|\0", (*b)->gsize);
 	(*b)->xpos = xpos + 3;
 	(*b)->ypos = ypos - 1;
 }
 
-void updatebullet(struct bullet **b) {
-	if (b == NULL || (*b) == NULL) {
+void updatebullet(struct list_head *head) {
+	if (list_empty(head)) {
 		return;
-	} else if ((*b)->ypos >=0) {
-		(*b)->ypos -= 1;
-	} else if ((*b)->ypos < 0){
-		free(*b);
-		*b = NULL;
+	} 
+	struct bullet *b = NULL;
+	list_for_each_entry(b, head, list) {
+		if (b->ypos > 0) {
+			b->ypos -= 1;
+		} else if (b->ypos <= 0){
+			list_del_entry(&b->list);
+			free(b->grafic);
+			free(b);
+		}
 	}
 }
 
@@ -142,10 +170,13 @@ void printPlayer(struct player *p) {
 	}
 }
 
-void printBullet(struct bullet *b) {
-	if (b == NULL)
+void printBullet(struct list_head *bulletHead) {
+	if (list_empty(bulletHead))
 		return;
-	mvprintw(b->ypos, b->xpos, &(b->grafic));
+	struct bullet *b = NULL;
+	list_for_each_entry(b, bulletHead, list) {
+		mvprintw(b->ypos, b->xpos, b->grafic);
+	}
 }
 
 void initInvaderList(struct list_head *head) {
@@ -224,23 +255,22 @@ void printInvaders(struct list_head *head, int sprite, int step) {
 
 }
 
-void checkCollision(struct list_head *invaderHead, struct bullet **shot) {
-	if ( *shot == NULL)
-		return;
-	struct invader *ptr = NULL;
-	list_for_each_entry(ptr, invaderHead, list) {
-		if(!ptr->destroyed && (*shot)->xpos >= ptr->xpos && (*shot)->xpos <= ptr->xpos+3 && 
-				(*shot)->ypos >= ptr->ypos && (*shot)->ypos <= ptr->ypos + 3) {
-			ptr->hit = 1;
-			(*shot)->ypos = -1;
-			updatebullet(shot);
-			return;
-		}
+void checkCollision(struct list_head *invaderHead, struct list_head *bulletHead) {
+	struct invader *iptr = NULL;
+	struct bullet *bptr = NULL;
+	list_for_each_entry(iptr, invaderHead, list) {
+		list_for_each_entry(bptr, bulletHead, list){ 
+			if(!iptr->destroyed && bptr->xpos >= iptr->xpos && bptr->xpos <= iptr->xpos+3 && 
+					bptr->ypos >= iptr->ypos && bptr->ypos <= iptr->ypos + 3) {
+				iptr->hit = 1;
+				bptr->ypos = -1;
+			}
+		}	
 	}
+	updatebullet(bulletHead);
 }
 
-int main(int argc, char **argv) {
-	int x, y;
+int main() {
 	int running = 1;
 	double fps = 40.0;
 	initscr();
@@ -259,9 +289,13 @@ int main(int argc, char **argv) {
 	initPlayer(&predator);
 	struct bullet *shot = NULL;
 	clock_gettime(CLOCK_REALTIME, &timepast);
-
+	
+	/* Invader Doubly Linked List */
 	static LIST_HEAD(invaderList);
 	initInvaderList(&invaderList);
+
+	/* Bullet Doubly Linked List */
+	static LIST_HEAD(bulletList);
 
 	int sprite = 0;
 	int step = 0;
@@ -282,8 +316,12 @@ int main(int argc, char **argv) {
 						predator.xpos +=4;
 						break;
 					case ' ':
-						if (shot == NULL)
-							initBullet(&shot, predator.xpos, predator.ypos);
+						initBullet(&shot, predator.xpos, predator.ypos);
+						if(list_empty(&bulletList)) {
+							INIT_LIST_HEAD(&shot->list);
+						}
+						list_add(&shot->list, &bulletList);
+						shot = NULL;
 						break;
 					case 'q':
 						running = 0;
@@ -296,13 +334,12 @@ int main(int argc, char **argv) {
 				step = 1;
 				spritecounter = 0.0;
 			}
-			if (shot != NULL) {
-				updatebullet(&shot);
-			}
-			checkCollision(&invaderList, &shot);
+
+			updatebullet(&bulletList);
+			checkCollision(&invaderList, &bulletList);
 			printInvaders(&invaderList, sprite, step);
 			printPlayer(&predator);
-			printBullet(shot);
+			printBullet(&bulletList);
 			step = 0;
 			ms = 0.0;
 			refresh();
