@@ -26,6 +26,7 @@ struct obstacle {
 	int gsize;
 	int xpos;
 	int ypos;
+	int hit;
 	struct list_head list;
 };
 
@@ -112,6 +113,7 @@ void initObstacle(struct obstacle **obs, int xpos, int ypos) {
 	strncpy((*obs)->grafic, "#\0", (*obs)->gsize);
 	(*obs)->xpos = xpos; 
 	(*obs)->ypos = ypos;
+	(*obs)->hit = 0;
 }
 
 void initBullet(struct bullet **b, int xpos, int ypos) {
@@ -137,6 +139,20 @@ void updatebullet(struct list_head *head) {
 			free(b->grafic);
 			free(b);
 		}
+	}
+}
+
+void updateobstacle(struct list_head *head) {
+	if (list_empty(head)) {
+		return;
+	} 
+	struct obstacle *obs = NULL;
+	list_for_each_entry(obs, head, list) {
+		if (obs->hit){
+			list_del_entry(&obs->list);
+			free(obs->grafic);
+			free(obs);
+		}	
 	}
 }
 
@@ -192,6 +208,36 @@ void initInvaderList(struct list_head *head) {
 				INIT_LIST_HEAD(&myinvader->list);
 			list_add(&myinvader->list, head);
 		}
+	}
+}
+
+void initObstacleList(struct list_head *head, int offset) {
+
+	struct obstacle *obs= NULL;
+
+	for(int i = offset; i < offset + 15; i++){
+		if (list_empty(head)) {
+			initObstacle(&obs, offset, LINES - 7);
+			INIT_LIST_HEAD(&obs->list);
+			list_add(&obs->list, head);
+		} else {
+			initObstacle(&obs, i, LINES - 7);
+			list_add(&obs->list, head);
+		}
+	}
+
+	for(int i = offset; i < offset + 15; i++){
+		initObstacle(&obs, i, LINES - 6);
+		list_add(&obs->list, head);
+	}
+
+}
+
+void printObstacles(struct list_head *head) {
+	struct obstacle *ptr = NULL;
+
+	list_for_each_entry(ptr, head, list) {
+		mvprintw(ptr->ypos, ptr->xpos, ptr->grafic);
 	}
 }
 
@@ -255,9 +301,11 @@ void printInvaders(struct list_head *head, int sprite, int step) {
 
 }
 
-void checkCollision(struct list_head *invaderHead, struct list_head *bulletHead) {
+void checkCollision(struct list_head *invaderHead, struct list_head *bulletHead, struct list_head *obstacleHead) {
 	struct invader *iptr = NULL;
 	struct bullet *bptr = NULL;
+
+	// check collision between bullet and invader
 	list_for_each_entry(iptr, invaderHead, list) {
 		list_for_each_entry(bptr, bulletHead, list){ 
 			if(!iptr->destroyed && bptr->xpos >= iptr->xpos && bptr->xpos <= iptr->xpos+3 && 
@@ -267,7 +315,19 @@ void checkCollision(struct list_head *invaderHead, struct list_head *bulletHead)
 			}
 		}	
 	}
+	// check collision between bullet and obstacle
+	bptr = NULL;
+	struct obstacle *optr = NULL;
+	list_for_each_entry(optr, obstacleHead, list) {
+		list_for_each_entry(bptr, bulletHead, list){ 
+			if(optr->xpos == bptr->xpos && optr->ypos == bptr->ypos) {
+				optr->hit = 1;
+				bptr->ypos = -1;
+			}
+		}	
+	}
 	updatebullet(bulletHead);
+	updateobstacle(obstacleHead);
 }
 
 int main() {
@@ -297,6 +357,13 @@ int main() {
 	/* Bullet Doubly Linked List */
 	static LIST_HEAD(bulletList);
 
+	/* Obstacles Doubly Linked List */
+	static LIST_HEAD(obstacleList);
+	for (int i = 0; i <=6; i++) {
+		initObstacleList(&obstacleList, 10 + i * 20);
+	}
+
+
 	int sprite = 0;
 	int step = 0;
 	double spritecounter = 0.0;
@@ -310,10 +377,10 @@ int main() {
 			if(kbhit()) {
 				switch (getch()){ 
 					case 'j': 
-						predator.xpos -=4;
+						predator.xpos -=1;
 						break;
 					case 'k':
-						predator.xpos +=4;
+						predator.xpos +=1;
 						break;
 					case ' ':
 						initBullet(&shot, predator.xpos, predator.ypos);
@@ -335,11 +402,12 @@ int main() {
 				spritecounter = 0.0;
 			}
 
-			updatebullet(&bulletList);
-			checkCollision(&invaderList, &bulletList);
+			//updatebullet(&bulletList);
+			checkCollision(&invaderList, &bulletList, &obstacleList);
 			printInvaders(&invaderList, sprite, step);
 			printPlayer(&predator);
 			printBullet(&bulletList);
+			printObstacles(&obstacleList);
 			step = 0;
 			ms = 0.0;
 			refresh();
